@@ -1,0 +1,115 @@
+import pandas as pd 
+import numpy as np 
+import matplotlib.pyplot as plt 
+import seaborn as sns 
+from sklearn.model_selection import train_test_split, cross_val_score 
+from sklearn.preprocessing import StandardScaler 
+from sklearn.metrics import accuracy_score, confusion_matrix, classification_report, 
+roc_curve, roc_auc_score 
+from sklearn.linear_model import LogisticRegression 
+from sklearn.naive_bayes import GaussianNB 
+from sklearn.tree import DecisionTreeClassifier 
+from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier 
+from sklearn.svm import LinearSVC 
+from sklearn.neighbors import KNeighborsClassifier 
+from xgboost import XGBClassifier 
+from lightgbm import LGBMClassifier 
+from catboost import CatBoostClassifier 
+# Veri setini oku 
+df = pd.read_csv("/content/spambase_csv.csv") 
+# Özellik ve hedef 
+X = df.iloc[:, :-1] 
+y = df.iloc[:, -1] 
+# Eğitim/test ayrımı 
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.25, random_state=42) 
+ 
+# Özellik ölçekleme 
+scaler = StandardScaler() 
+X_train_scaled = scaler.fit_transform(X_train) 
+X_test_scaled = scaler.transform(X_test) 
+ 
+# Modeller 
+models = { 
+    "Logistic Regression": LogisticRegression(), 
+    "Naive Bayes": GaussianNB(), 
+    "Decision Tree": DecisionTreeClassifier(), 
+    "Random Forest": RandomForestClassifier(), 
+    "Gradient Boosting": GradientBoostingClassifier(), 
+    "Linear SVM": LinearSVC(), 
+    "K-Nearest Neighbors": KNeighborsClassifier(), 
+    "XGBoost": XGBClassifier(use_label_encoder=False, eval_metric='logloss'), 
+    "LightGBM": LGBMClassifier(), 
+    "CatBoost": CatBoostClassifier(verbose=0) 
+} 
+ 
+ 
+# Sonuçları saklamak için 
+results = [] 
+ 
+ 
+ 
+# Tüm modeller için döngü 
+for name, model in models.items(): 
+    print(f"\n Model: {name}") 
+ 
+    if name == "Naive Bayes": 
+        model.fit(X_train, y_train) 
+        y_pred = model.predict(X_test) 
+        cv_scores = cross_val_score(model, X, y, cv=5) 
+    else: 
+        model.fit(X_train_scaled, y_train) 
+        y_pred = model.predict(X_test_scaled) 
+        cv_scores = cross_val_score(model, scaler.transform(X), y, cv=5) 
+ 
+    # Test doğruluğu 
+    accuracy = accuracy_score(y_test, y_pred) 
+    print(f"Test Seti Doğruluğu: {accuracy:.4f}") 
+    print(f"5-Fold Çapraz Doğrulama Skoru (Ort.): {cv_scores.mean():.4f}") 
+ 
+    # Classification Report 
+    print("\nClassification Report:") 
+    print(classification_report(y_test, y_pred)) 
+ 
+    # Confusion Matrix 
+    cm = confusion_matrix(y_test, y_pred) 
+    sns.heatmap(cm, annot=True, fmt="d", cmap="Blues", xticklabels=["Not Spam", 
+"Spam"], yticklabels=["Not Spam", "Spam"]) 
+    plt.title(f"Karmaşıklık Matrisi - {name}") 
+    plt.xlabel("Tahmin") 
+    plt.ylabel("Gerçek") 
+    plt.show() 
+ 
+    # ROC 
+    if hasattr(model, "predict_proba"): 
+        y_probs = model.predict_proba(X_test_scaled if name != "Naive Bayes" else 
+X_test)[:, 1] 
+    elif hasattr(model, "decision_function"): 
+        y_probs = model.decision_function(X_test_scaled) 
+        y_probs = (y_probs - y_probs.min()) / (y_probs.max() - y_probs.min()) 
+    else: 
+        y_probs = None 
+ 
+    if y_probs is not None: 
+        fpr, tpr, _ = roc_curve(y_test, y_probs) 
+        auc_score = roc_auc_score(y_test, y_probs) 
+        plt.figure(figsize=(8, 6)) 
+        plt.plot(fpr, tpr, label=f"{name} (AUC = {auc_score:.2f})") 
+        plt.plot([0, 1], [0, 1], linestyle='--', color='navy') 
+        plt.xlabel("False Positive Rate") 
+        plt.ylabel("True Positive Rate") 
+        plt.title(f"ROC Curve - {name}") 
+        plt.legend() 
+        plt.grid(True) 
+        plt.show() 
+ 
+    # Sonuçlara ekle 
+    results.append({ 
+"Model": name, 
+"Test Doğruluğu": round(accuracy, 4), 
+"CV Ort. Doğruluk (5-Fold)": round(cv_scores.mean(), 4) 
+}) 
+# Tüm sonuçları göster 
+summary_df = pd.DataFrame(results) 
+print("\n MODELLERİN KARŞILAŞTIRMA TABLOSU:\n") 
+print(summary_df.sort_values(by="Test Doğruluğu", 
+ascending=False).to_string(index=False)) 
